@@ -1,55 +1,37 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import { ApiError } from "../utils/ApiError";
+import { Request, Response, NextFunction } from "express"; 
 import prisma from "../db";
+import { ApiError } from "../utils/ApiError";
 import { AsyncHandler } from "../utils/AsyncHandler";
+import { verifyAccessToken } from "../utils/jwt.util";
 
 export const authenticate = AsyncHandler(
   async (req: Request, _res: Response, next: NextFunction) => {
-    const token =
-      req.header("Authorization")?.replace("Bearer ", "") ||
-      req.cookies?.accessToken;
+    const authHeader = req.headers.authorization;
 
-    console.log("🔍 Token from header:", req.header("Authorization"));
-    console.log("🔍 Token from cookies:", req.cookies?.accessToken);
-    console.log("🔍 Final token:", token);
-
-    if (!token) {
-      throw new ApiError(401, "No Token provided");
+    if (!authHeader?.startsWith('Bearer ')) {
+      throw new ApiError(401, "Access token is required!")
     }
 
-    try {
-      console.log(
-        "🔑 ACCESS_TOKEN_SECRET exists:",
-        !!process.env.ACCESS_TOKEN_SECRET
-      );
+    const token = authHeader.substring(7);
+    const payload = verifyAccessToken(token);
 
-      const decoded = jwt.verify(
-        token,
-        process.env.ACCESS_TOKEN_SECRET as string
-      ) as { userId: string };
-
-      console.log("✅ Decoded token:", decoded);
-
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
-      });
-
-      console.log("👤 User found:", !!user);
-
-      if (!user) {
-        throw new ApiError(401, "Invalid Access Token!");
+    const user = await prisma.user.findUnique({
+      where: {id: payload.userId},
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        isActive: true
       }
+    })
 
-      req.user = {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      };
-      next();
-    } catch (error) {
-      console.error("❌ JWT Error:", error);
-      throw new ApiError(401, "Invalid token!");
+    if (!user || !user.isActive) {
+      throw new ApiError(401, "User not authorized");
     }
+    
+    req.user = user;
+    
+    next();
   }
 );
