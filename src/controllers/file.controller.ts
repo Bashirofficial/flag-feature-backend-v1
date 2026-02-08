@@ -1,0 +1,353 @@
+import { Request, Response } from "express"; 
+import prisma from "../db";
+import { ApiResponse } from "../utils/ApiResponse";
+import { ApiError } from "../utils/ApiError";
+import { AsyncHandler } from "../utils/AsyncHandler";
+ 
+ 
+ //--------- Helper Functions (H) ---------//
+// H1. Helper function to get video duration
+const getVideoDuration = (buffer: Buffer): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const tempPath = path.join(__dirname, `temp_${uuidv4()}`);
+    fs.writeFileSync(tempPath, buffer);
+
+    ffmpeg.ffprobe(tempPath, (err, metadata) => {
+      fs.unlinkSync(tempPath);
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      const duration = metadata?.format?.duration;
+      if (duration) {
+        const hours = Math.floor(duration / 3600);
+        const minutes = Math.floor((duration % 3600) / 60);
+        const seconds = Math.floor(duration % 60);
+        resolve(
+          `${hours.toString().padStart(2, "0")}:${minutes
+            .toString()
+            .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+        );
+      } else {
+        resolve("00:00:00)");
+      }
+    });
+  });
+};
+
+// H2. Helper function to generate thumbnail for videos
+const generateThumbnail = (buffer: Buffer): Promise<Buffer> => {
+  return new Promise((resolve, reject) => {
+    const tempInputPath = path.join(__dirname, `temp_input_${uuidv4()}`);
+    const tempOutputPath = path.join(__dirname, `temp_output_${uuidv4()}.png`);
+    fs.writeFileSync(tempInputPath, buffer);
+
+    ffmpeg(tempInputPath)
+      .screenshots({
+        timestamps: ["50%"],
+        filename: path.basename(tempOutputPath),
+        folder: path.dirname(tempOutputPath),
+        size: "1280x720",
+      })
+      .on("end", () => {
+        try {
+          const thumbnailBuffer = fs.readFileSync(tempOutputPath);
+          fs.unlinkSync(tempInputPath);
+          fs.unlinkSync(tempOutputPath);
+          resolve(thumbnailBuffer);
+        } catch (error) {
+          reject(error);
+        }
+      })
+      .on("error", (err) => {
+        if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
+        if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+        reject(err);
+      });
+  });
+};
+
+// H3. Upload file to CloudFlare R2
+const uploadToR2 = async (
+  buffer: Buffer,
+  fileName: string,
+  mimetype: string,
+  projectId: string
+): Promise<string> => {
+  const key = `projects/${projectId}/${fileName}`;
+
+  const command = new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    Body: buffer,
+    ContentType: mimetype,
+    ContentLength: buffer.length,
+  });
+
+  await r2Client.send(command);
+  return `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/${key}`;
+};
+
+// H4. Get file type based on mime type and upload context
+const determineFileType = (
+  mimeType: string,
+  isEdited: boolean = false,
+  isFinal: boolean = false
+) => {
+  if (isFinal) return "FINAL";
+  if (isEdited) return "EDITED";
+  if (mimeType.startsWith("image/")) return "THUMBNAIL";
+  if (mimeType.startsWith("audio/")) return "AUDIO";
+  if (mimeType.startsWith("video/")) return "RAW";
+  return "OTHER";
+};
+
+//--------- Controllers (C) ---------//
+
+// C1. Upload file endpoint
+ 
+// C2. Get files for a project
+const getProjectFiles = AsyncHandler(async (req: Request, res: Response) => {
+  const { id: projectId } = req.params;
+  const { fileType, status, page = 1, limit = 20 } = req.query;
+  const userId = req.user?.id;
+  if (!userId) {
+    throw new ApiError(401, "User not authenticated");
+  }
+
+  const debugProject = await prisma.project.findFirst({
+    where: { projectDisplayId: projectId },
+    select: { id: true, youtuberId: true, editorId: true },
+  });
+  console.log(debugProject);
+
+  const project = await prisma.project.findFirst({
+    where: {
+      projectDisplayId: projectId,
+      //OR: [{ youtuberId: userId }, { editorId: userId }],
+    },
+  });
+
+  if (!project) {
+    throw new ApiError(404, "Project not found or access denied");
+  }
+
+  const whereClause: any = { projectId: project.id };
+
+  if (fileType && typeof fileType === "string") {
+    whereClause.fileType = fileType.toUpperCase();
+  }
+
+  if (status && typeof status === "string") {
+    whereClause.status = status.toUpperCase();
+  }
+
+  const skip = (Number(page) - 1) * Number(limit);
+
+  const [files, totalCount] = await Promise.all([
+    prisma.file.findMany({
+      where: whereClause,
+      include: {
+        uploader: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { uploadedAt: "desc" },
+      skip,
+      take: Number(limit),
+    }),
+    prisma.file.count({ where: whereClause }),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / Number(limit));
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        files,
+        pagination: {
+          currentPage: Number(page),
+          totalPages,
+          totalCount,
+          hasNextPage: Number(page) < totalPages,
+          hasPrevPage: Number(page) > 1,
+        },
+      },
+      "Files retrieved successfully"
+    )
+  );
+});
+
+// C3. Get single file details
+const getFileById = AsyncHandler(async (req: Request, res: Response) => {
+  const { id: fileId } = req.params;
+  const userId = req.user?.id;
+  if (!userId) {
+    throw new ApiError(401, "User not authenticaed");
+  }
+
+  const file = await prisma.file.findFirst({
+    where: {
+      id: fileId,
+      project: {
+        OR: [{ youtuberId: userId }, { editorId: userId }],
+      },
+    },
+    include: {
+      uploader: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      project: {
+        select: {
+          id: true,
+          title: true,
+          videoTitle: true,
+        },
+      },
+    },
+  });
+
+  if (!file) {
+    throw new ApiError(404, "File not found or access denied");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, file, "File retrieved successfully"));
+});
+
+// C4.  
+ 
+
+// C5. Update file status
+const updateFileStatus = AsyncHandler(async (req: Request, res: Response) => {
+  const { id: fileId } = req.params;
+  console.log("Params:", req.params);
+
+  const { status } = req.body;
+
+  const userId = req.user?.id;
+  if (!userId) {
+    throw new ApiError(401, "User not authenticated");
+  }
+
+  if (
+    !status ||
+    ![
+      "UPLOADED",
+      "PROCESSING",
+      "REVIEW",
+      "APPROVED",
+      "REJECTED",
+      "UPLOAD_FAILED",
+    ].includes(status)
+  ) {
+    throw new ApiError(400, "Invalid status provided");
+  }
+
+  const file = await prisma.file.findFirst({
+    where: {
+      id: fileId,
+      project: {
+        OR: [{ youtuberId: userId }, { editorId: userId }],
+      },
+    },
+  });
+
+  if (!file) {
+    throw new ApiError(404, "File not found or access denied");
+  }
+
+  const updatedFile = await prisma.file.update({
+    where: { id: fileId },
+    data: { status },
+    include: {
+      uploader: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, updatedFile, "File status updated successfully")
+    );
+});
+
+// C6. Delete file
+const deleteFile = AsyncHandler(async (req: Request, res: Response) => {
+  const { id: fileId } = req.params;
+  const userId = req.user?.id;
+  if (!userId) {
+    throw new ApiError(401, "User not authenticated");
+  }
+
+  const file = await prisma.file.findFirst({
+    where: {
+      id: fileId,
+      project: {
+        OR: [{ youtuberId: userId }, { editorId: userId }],
+      },
+    },
+  });
+
+  if (!file) {
+    throw new ApiError(404, "File not found or access denied");
+  }
+
+  try {
+    const key = file.fileUrl.replace(
+      `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/`,
+      ""
+    );
+    await r2Client.send(
+      new DeleteObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+      })
+    );
+
+    if (file.thumbnailUrl) {
+      const thumbnailKey = file.thumbnailUrl.replace(
+        `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/`,
+        ""
+      );
+      await r2Client.send(
+        new DeleteObjectCommand({
+          Bucket: BUCKET_NAME,
+          Key: thumbnailKey,
+        })
+      );
+    }
+
+    await prisma.file.delete({
+      where: { id: fileId },
+    });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, "File deleted successfully"));
+  } catch (error) {
+    console.error("Error occured while deleting file", error);
+    throw new ApiError(500, "Failed to delete file");
+  }
+});
+
+export {
+   
+};

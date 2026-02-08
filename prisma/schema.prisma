@@ -1,0 +1,293 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+//output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  //url = env("DATABASE_URL")
+} 
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  password      String
+  firstName     String?
+  lastName      String?
+  role          Role           @default(ADMIN)  //Let's make ADMIN as Default for now later will change it to (MEMBER)
+  isActive      Boolean        @default(true)
+  
+  // Relations
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  refreshTokens  RefreshToken[]
+  apiKeys        ApiKey[]
+  auditLogs      AuditLog[]
+  //invitations    Invitation[]   @relation("InvitedBy")   //Invite feature will be on hold at the moment.
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  lastLoginAt   DateTime?
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id            String        @id @default(uuid())
+  token         String        @unique
+  userId        String
+  expiresAt     DateTime
+  createdAt     DateTime      @default(now())
+  
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+enum Role {
+  ADMIN    
+  MEMBER  
+}
+
+
+model Organization {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  slug          String         @unique
+  
+  // Relations
+  users         User[]
+  environments  Environment[]
+  featureFlags  FeatureFlag[]
+  apiKeys       ApiKey[]
+  auditLogs     AuditLog[]
+  invitations   Invitation[]
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("organizations")
+}
+
+
+model Environment {
+  id              String              @id @default(uuid())
+  name            String              // "Development", "Staging", "Production" etc
+  key             String              // "dev", "staging", "prod"
+  description     String?
+  sortOrder       Int                 @default(0)
+  
+  // Relations
+  organizationId  String
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  flagValues      FlagEnvironmentValue[]
+  apiKeys         ApiKey[]
+  
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+  @@map("environments")
+}
+
+ 
+model FeatureFlag {
+  id              String                @id @default(uuid())
+  key             String                // "enable_new_dashboard" (snake_case)
+  name            String?               // Human-readable name
+  description     String
+  type            FlagType              @default(BOOLEAN)
+  isActive        Boolean               @default(true)
+  
+  // Relations
+  organizationId  String
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  environmentValues FlagEnvironmentValue[]
+  
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+  @@index([key])
+  @@map("feature_flags")
+}
+
+model FlagEnvironmentValue {
+  id              String        @id @default(uuid())
+  
+  // The actual value (stored as JSON for flexibility)
+  value           Json          // Can be boolean, string, number, or JSON object
+  
+  // Relations
+  flagId          String
+  flag            FeatureFlag   @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  
+  environmentId   String
+  environment     Environment   @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([flagId, environmentId])
+  @@index([flagId])
+  @@index([environmentId])
+  @@map("flag_environment_values")
+}
+
+enum FlagType {
+  BOOLEAN   // true/false
+  STRING    // text value
+  NUMBER    // numeric value
+  JSON      // complex object
+}
+
+
+
+model ApiKey {
+  id              String        @id @default(uuid())
+  name            String?       // Optional name for the key
+  key             String        @unique // The actual API key (hashed)
+  keyPrefix       String        // First 8 chars for display (e.g., "sk_prod_")
+  
+  status          ApiKeyStatus  @default(ACTIVE)
+  
+  // Relations
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  environmentId   String
+  environment     Environment   @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  
+  createdById     String
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  
+  // Usage tracking
+  lastUsedAt      DateTime?
+  usageCount      Int           @default(0)
+  
+  createdAt       DateTime      @default(now())
+  revokedAt       DateTime?
+
+  @@index([organizationId])
+  @@index([environmentId])
+  @@index([key])
+  @@index([keyPrefix])
+  @@map("api_keys")
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+// ============================================
+// AUDIT LOGS
+// ============================================
+
+model AuditLog {
+  id              String        @id @default(uuid())
+  action          AuditAction
+  resourceType    String        // "flag", "api_key", "user", "environment"
+  resourceId      String?
+  resourceName    String?       // For display
+  
+  // What changed
+  changes         Json?         // { before: {...}, after: {...} }
+  
+  // Context
+  environmentKey  String?       // Which environment was affected
+  ipAddress       String?
+  userAgent       String?
+  
+  // Relations
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  
+  createdAt       DateTime      @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum AuditAction {
+  // Flags
+  FLAG_CREATED
+  FLAG_UPDATED
+  FLAG_DELETED
+  FLAG_VALUE_UPDATED
+  
+  // API Keys
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  
+  // Users
+/*USER_INVITED
+  USER_JOINED
+  USER_ROLE_CHANGED
+  USER_DEACTIVATED
+*/
+
+  // Environments
+  ENVIRONMENT_CREATED
+  ENVIRONMENT_UPDATED
+  ENVIRONMENT_DELETED
+}
+
+// ============================================
+// INVITATIONS (for team members)
+// ============================================
+/*
+model Invitation {
+  id              String          @id @default(uuid())
+  email           String
+  role            Role            @default(MEMBER)
+  token           String          @unique
+  status          InvitationStatus @default(PENDING)
+  
+  // Relations
+  organizationId  String
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  invitedById     String
+  invitedBy       User            @relation("InvitedBy", fields: [invitedById], references: [id])
+  
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdAt       DateTime        @default(now())
+
+  @@unique([organizationId, email])
+  @@index([token])
+  @@index([email])
+  @@map("invitations")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+*/
