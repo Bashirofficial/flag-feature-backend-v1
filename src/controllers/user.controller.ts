@@ -1,171 +1,198 @@
-import { Request, Response, CookieOptions } from "express";
+import { Request, Response } from "express";
 import { comparePassword, hashPassword } from "../utils/hash.util";
-import jwt from "jsonwebtoken";
 import prisma from "../db";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
 import { AsyncHandler } from "../utils/AsyncHandler";
-import { generateAccessAndRefreshToken } from "../services/auth.service";
+import {
+  generateAccessAndRefreshToken,
+  rotateRefreshToken,
+  revokeRefreshToken,
+} from "../services/auth.service";
 
 //--------- Controllers (C) ---------//
 
-// C1. Refresh access token endpoint
-const refreshAccessToken = AsyncHandler(async (req, res) => {
-  const incomingRefreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
-
-  if (!incomingRefreshToken) {
-    throw new ApiError(401, "Unauthorized request");
+// C1. Refresh Access Token using refreshToken
+const refreshAccessToken = AsyncHandler(async (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    throw new ApiError(401, "Refresh token is required");
   }
 
-  try {
-    const decodedToken = jwt.verify(
-      incomingRefreshToken,
-      process.env.REFRESH_TOKEN_SECRET!
-    ) as { id: string };
-
-    const user = await prisma.user.findUnique({
-      where: { id: decodedToken.id },
-    });
-
-    const storedToken = await prisma.refreshToken.findUnique({
-      where: { token: incomingRefreshToken },
-      include: { user: true },
-    });
-
-    if (!storedToken || storedToken.token !== incomingRefreshToken) {
-      throw new ApiError(401, "Invalid or expired refresh token");
-    }
-
-    const { accessToken, refreshToken: newRefreshToken } =
-      await generateAccessAndRefreshToken(storedToken.user.id);
-
-    const options: CookieOptions = {
-      httpOnly: true,
-      secure: true,
-    };
-
-    return res
-      .status(200)
-      .cookie("accessToken", accessToken, options)
-      .cookie("refreshToken", newRefreshToken, options)
-      .json(
-        new ApiResponse(
-          200,
-          { accessToken, refreshToken: newRefreshToken },
-          "Access token refreshed successfully"
-        )
-      );
-  } catch (error) {
-    throw new ApiError(401, "Invalid refresh token");
-  }
+  const tokens = await rotateRefreshToken(refreshToken);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, tokens, "Tokens refreshed successfully"));
 });
 
-// C2. Register as an Editor
+// C2. User Registration (Admin as default for now)
 const register = AsyncHandler(async (req: Request, res: Response) => {
-  const { name, email, password, role } = req.body;
+  const { firstName, lastName, email, password, organizationName } = req.body;
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!email || !emailRegex.test(email)) {
-    throw new ApiError(400, "Invalid Email format");
-  }
-
-  if ([name, email, password].some((field) => field?.trim() === "")) {
+  if (
+    [firstName, lastName, email, password, organizationName].some(
+      (field) => field?.trim() === "",
+    )
+  ) {
     throw new ApiError(400, "All fields are required");
   }
 
-  if (password.length < 6) {
-    throw new ApiError(400, "Password must be at least 6 characters long");
-  }
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
-    throw new ApiError(403, "User already exists");
+    throw new ApiError(409, "User with this email already exists");
   }
+
+  const existingOrg = await prisma.organization.findUnique({
+    where: { name: organizationName },
+  });
+  if (existingOrg) {
+    throw new ApiError(409, "Organization name is already taken");
+  }
+
+  const slug = organizationName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
   const hashedPassword = await hashPassword(password);
 
-  const createdUser = await prisma.user.create({
-    data: { name, email, password: hashedPassword, role },
+  const result = await prisma.$transaction(async (tx) => {
+    const organization = await tx.organization.create({
+      data: {
+        name: organizationName,
+        slug,
+      },
+    });
+
+    const environment = await Promise.all([
+      tx.environment.create({
+        data: {
+          name: "Development",
+          key: "dev",
+          description: "Development environment",
+          sortOrder: 1,
+          organizationId: organization.id,
+        },
+      }),
+      tx.environment.create({
+        data: {
+          name: "Staging",
+          key: "staging",
+          description: "Staging environment",
+          sortOrder: 2,
+          organizationId: organization.id,
+        },
+      }),
+      tx.environment.create({
+        data: {
+          name: "Production",
+          key: "prod",
+          description: "Production environment",
+          sortOrder: 3,
+          organizationId: organization.id,
+        },
+      }),
+    ]);
+
+    const user = await tx.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role: "ADMIN",
+        organizationId: organization.id,
+      },
+    });
+
+    return { organization, user, environment };
   });
 
-  return res
-    .status(201)
-    .json(new ApiResponse(201, createdUser, "User registered Successfully"));
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    result.user.id,
+  );
+
+  return res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          organizationId: result.user.organizationId,
+          role: result.user.role,
+        },
+        tokens: {
+          accessToken,
+          refreshToken,
+        },
+      },
+      "User along with organization has been registered Successfully",
+    ),
+  );
 });
 
-// C3. Login as an Editor
+// C3. User Login
 const login = AsyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
-  if (!email || !password) {
-    throw new ApiError(400, "Email and password are required");
-  }
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     throw new ApiError(401, "Invalid credentials");
   }
 
-  if (!user.password) {
-    throw new ApiError(401, "Invalid credentials");
+  if (!user.isActive) {
+    throw new ApiError(401, "Account is deactivated");
   }
   const isPasswordValid = await comparePassword(password, user.password);
   if (!isPasswordValid) {
     throw new ApiError(401, "Invalid credentials");
   }
 
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
   const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
-    user.id
+    user.id,
   );
 
-  const options: CookieOptions = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // Only secure in production
-    sameSite: "strict",
-  };
-
-  return res
-    .status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
-    .json(
-      new ApiResponse(
-        200,
-        {
-          user,
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          organizationId: user.organizationId,
+        },
+        tokens: {
           accessToken,
           refreshToken,
         },
-        "User logged in Successfully"
-      )
-    );
+      },
+      "User logged in Successfully",
+    ),
+  );
 });
 
-// C4. Logout as an Editor
+// C4. User Logout
 const logout = AsyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
     throw new ApiError(401, "Unauthorized: User not authenticated.");
   }
+  const { refreshToken } = req.body;
 
-  const authenticatedReq = req as Request & {
-    user: { id: string; email: string; role: any };
-  };
+  await revokeRefreshToken(refreshToken);
 
-  await prisma.refreshToken.deleteMany({
-    where: { userId: authenticatedReq.user.id },
-  });
-
-  const options: CookieOptions = {
-    //secure as this cookie can only be modified from server
-    httpOnly: true,
-    secure: true,
-    path: "/",
-  };
   return res
     .status(200)
-    .clearCookie("accessToken", options)
-    .clearCookie("refreshToken", options)
     .json(new ApiResponse(201, {}, "User logged out Successfully"));
 });
 
+/*
 const verifyUser = AsyncHandler(async (req: Request, res: Response) => {
   const user = (req as any).user;
 
@@ -176,5 +203,6 @@ const verifyUser = AsyncHandler(async (req: Request, res: Response) => {
   return res
     .status(200)
     .json(new ApiResponse(200, { user }, "User verified successfully"));
-});
-export { refreshAccessToken, register, login, logout, verifyUser };
+}); */
+
+export { refreshAccessToken, register, login, logout };
