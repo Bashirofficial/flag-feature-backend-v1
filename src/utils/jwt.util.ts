@@ -48,3 +48,22 @@ export const verifyAccessToken = (token: string): AccessPayload => {
     throw new ApiError(401, "Invalid or expired access token");
   }
 };
+
+export const verifyRefreshToken = (token: string): RefreshPayload => {
+  try {
+    const decoded = jwt.verify(token, REFRESH_TOKEN_SECRET);
+
+    if (
+      typeof decoded !== "object" ||
+      !decoded ||
+      !("userId" in decoded) ||
+      !("tokenId" in decoded)
+    ) {
+      throw new ApiError(401, "Invalid refresh token payload");
+    }
+
+    return decoded as RefreshPayload;
+  } catch {
+    throw new ApiError(401, "Invalid or expired refresh token");
+  }
+};
