@@ -39,7 +39,7 @@ const getFlag = AsyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const organizationId = req.user!.organizationId;
 
-    const flag = await prisma.featureFlag.findUnique({
+    const flag = await prisma.featureFlag.findFirst({
         where: { 
             id,
             organizationId,
@@ -96,8 +96,10 @@ const createFlag = AsyncHandler(async (req: Request, res: Response) => {
 
   const existingFlag = await prisma.featureFlag.findUnique({
     where: {
-        key,
-        organizationId,
+        organizationId_key : {
+            key,
+            organizationId,
+        }
     }
   })
 
@@ -172,32 +174,176 @@ const createFlag = AsyncHandler(async (req: Request, res: Response) => {
 
 /* C4. Update a flag */
 const updateFlag = AsyncHandler(async (req: Request, res: Response) => {
- 
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(200,  , " "),
-    );
+    const { id } = req.params;
+    const { name, description, isActive } = req.body;
+    const organizationId = req.user!.organizationId;
+
+    const flag = await prisma.featureFlag.findFirst({
+        where: { id, organizationId },
+    })
+
+    if (!flag) {
+         throw new ApiError(404, "Flag not found")
+    }
+
+    const updatedFlag = await prisma.$transaction(async (tx) => {
+        const updated = await tx.featureFlag.update({
+            where: { id },
+            data: {
+                name,
+                description,
+                isActive
+            }, 
+        })
+
+        await tx.auditLog.create({
+            data: {
+                action: 'FLAG_UPDATED',
+                resourceType: 'flag',
+                resourceId: id,
+                resourceName: flag.key, 
+                changes: {
+                    before:  { name: flag.name, description: flag.description, isActive: flag.isActive },
+                    after: {  name,  description,  isActive },,
+                }
+                organizationId,
+                userId: req.user!.id,
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        })
+
+        return updated;
+    })
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(200,  updatedFlag, "Flag updated successfully"),
+        );
 });
 
 
 /* C5. Delete a flag */
 const deleteFlag = AsyncHandler(async (req: Request, res: Response) => {
- 
+    const { id } = req.params;
+    const organizationId = req.user!.organizationId;
+    
+    const flag = await prisma.featureFlag.findFirst({
+        where: { id, organizationId}
+    })
+
+    if (!flag) {
+            throw new ApiError(404, "Flag not found")
+    }
+
+    await prisma.$transaction(async (tx) => {
+        
+        await tx.featureFlag.delete({
+            where: { id }
+        })
+
+        await tx.auditLog.create({
+            data: {
+                action: 'FLAG_DELETED',
+                resourceType: 'flag',
+                resourceId: id,
+                resourceName: flag.key, 
+                organizationId,
+                userId: req.user!.id,
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        })
+    })
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(200,  {}, "Flag deleted successfully"),
+        );
+});
+
+
+/* C6. Update flag for specific value of environment */
+const  updateFlagEnvironmentValue = AsyncHandler(async (req: Request, res: Response) => {
+    const { id, envId } = req.params;
+    const { value } = req.body;
+    const organizationId = req.user!.organizationId;
+
+    const flag = await prisma.featureFlag.findFirst({
+        where: { id, organizationId },
+    })
+
+    if (!flag) {
+         throw new ApiError(404, "Flag not found")
+    }
+
+    const environment = await prisma.environment.findFirst({
+        where: {
+            id: envId,
+            organizationId
+        }
+    })
+
+    if (!environment) {
+        throw new ApiError(404, "Environment not found")
+    }
+
+    
+    await prisma.$transaction(async (tx) => {
+        
+        const currentValue = await prisma.flagEnvironmentValue.findUnique({
+            where: {
+                flagId_environmentId: {
+                    flagId: id,
+                    environmentId: envId
+                }
+            }
+        })
+
+        await tx.flagEnvironmentValue.upsert({
+            where: {
+                flagId_environmentId: {
+                    flagId: id,
+                    environmentId: envId,
+                }
+            },
+            create: {
+                flagId: id,
+                environmentId: envId,
+                value,
+            },
+            update: {
+                value
+            }
+        })
+
+        await tx.auditLog.create({
+            data: {
+                action: 'FLAG_VALUE_UPDATED',
+                resourceType: 'flag',
+                resourceId: flag.id,
+                resourceName: flag.key,
+                environmentKey: environment.key,
+                changes: {
+                    before: currentValue?. value,
+                    after: value,
+                },
+                organizationId,
+                userId: req.user!.id,
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        })
+    })
+
   return res
     .status(200)
     .json(
-      new ApiResponse(200,  , " "),
+      new ApiResponse(200,  {}, "Flag environment value updated successfully"),
     );
 });
 
 
-/* C3. Update flag for specific value of environment */
-const getFlag = AsyncHandler(async (req: Request, res: Response) => {
- 
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(200,  , " "),
-    );
-});
+export { getAllFlags, getFlag, createFlag, updateFlag, deleteFlag, updateFlagEnvironmentValue };
