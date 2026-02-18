@@ -167,3 +167,5 @@ const isFlagEnabled = AsyncHandler(async (req: Request, res: Response) => {
     ),
   );
 });
+
+export { getAllFlags, getFlagByKey, getBulkFlags, isFlagEnabled };
