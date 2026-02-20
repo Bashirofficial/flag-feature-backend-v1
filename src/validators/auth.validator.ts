@@ -1,21 +1,26 @@
-import { z } from 'zod';
+import { z } from "zod";
+
+const required = (name: string) => ({
+  error: (issue: any) =>
+    issue.input === undefined
+      ? `${name} is required`
+      : `Invalid ${name.toLowerCase()}`,
+});
 
 export const registerSchema = z.object({
   body: z.object({
-    email: z
-      .string({ required_error: 'Email is required' })
-      .email('Invalid email format'),
+    email: z.email(required("Email")),
     password: z
-      .string({ required_error: 'Password is required' })
-      .min(8, 'Password must be at least 8 characters')
+      .string(required("Password"))
+      .min(8, "Password must be at least 8 characters")
       .regex(
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        'Password must contain at least one uppercase letter, one lowercase letter, and one number'
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number",
       ),
     organizationName: z
-      .string({ required_error: 'Organization name is required' })
-      .min(2, 'Organization name must be at least 2 characters')
-      .max(100, 'Organization name must be at most 100 characters'),
+      .string(required("Organization name"))
+      .min(2, "Organization name must be at least 2 characters")
+      .max(100, "Organization name must be at most 100 characters"),
     firstName: z.string().optional(),
     lastName: z.string().optional(),
   }),
@@ -23,15 +28,13 @@ export const registerSchema = z.object({
 
 export const loginSchema = z.object({
   body: z.object({
-    email: z
-      .string({ required_error: 'Email is required' })
-      .email('Invalid email format'),
-    password: z.string({ required_error: 'Password is required' }),
+    email: z.email(required("Email")),
+    password: z.string(required("Password")),
   }),
 });
 
 export const refreshSchema = z.object({
   body: z.object({
-    refreshToken: z.string({ required_error: 'Refresh token is required' }),
+    refreshToken: z.string(required("Refresh token")),
   }),
 });
