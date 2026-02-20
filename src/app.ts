@@ -1,35 +1,51 @@
-import express from "express";
+import express, { Application } from "express";
 import cors from "cors";
-import http from "http";
-import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import morgan from "morgan";
-import { errorHandler } from "./middlewares/errorHandler.middleware"; 
+import {
+  errorHandler,
+  notFoundHandler,
+} from "./middlewares/errorHandler.middleware";
 
-const app = express();
-const server = http.createServer(app);
+const app: Application = express();
 
+// ================= Security =================
+app.use(helmet());
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN,
     credentials: true,
-  })
+  }),
 );
-app.use(express.json({ limit: "16kb" }));
-app.use(express.urlencoded({ extended: true, limit: "16kb" })); //simply urlencoded() will also work
-app.use(express.static("public"));
-app.use(cookieParser());
-app.use(morgan("dev"));
- 
-app.get("/", (req, res) => {
-  res.send("🚀 API is running");
+
+// ================= BODY PARSING =================
+app.use(express.json({ limit: "25kb" }));
+app.use(express.urlencoded({ extended: true, limit: "25kb" }));
+
+// ================= LOGGING =================
+if (process.env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+} else {
+  app.use(morgan("combined"));
+}
+
+// ================= HEALTH CHECK =================
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
 });
 
-//Routes
-import userRouter from "./routes/user.route";
- 
-app.use("/api/v1/users", userRouter);
-app.use("/api/v1/projects/:id/files", fileRouter);
-app.use(errorHandler);
+// ================= Routes =================
+//import userRouter from "./routes/user.route";
 
- 
-export { app, server };
+//app.use("/api/v1/users", userRouter);
+//app.use("/api/v1/projects/:id/files", fileRouter);
+
+// ================= Error Handling =================
+app.use(notFoundHandler); // 404 handler - must be after all routes
+app.use(errorHandler); // Global error handler - must be after all routes
+
+export { app };
