@@ -1,4 +1,4 @@
-import { Request } from 'express';
+import { Request } from "express";
 
 // Extend Express Request to include authenticated user
 declare global {
@@ -7,10 +7,10 @@ declare global {
       user?: {
         id: string;
         email: string;
-        role: 'ADMIN' | 'MEMBER';
+        role: "ADMIN" | "MEMBER";
         organizationId: string;
       };
-      
+
       // For API key authentication on public routes
       apiKey?: {
         id: string;
@@ -23,17 +23,3 @@ declare global {
 }
 
 export {};
-
-
-/*import { Role } from "@prisma/client";
-
-declare module "express-serve-static-core" {
-  interface Request {
-    user?: {
-      id: string;
-      email: string;
-      role: Role;
-    };
-  }
-}
-*/
