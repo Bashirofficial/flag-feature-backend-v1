@@ -1,15 +1,17 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 export const connectDB = async () => {
-  try {
-    await prisma.$connect();
-    console.log("✅ Database connected successfully");
-  } catch (err) {
-    console.error("❌ Database connection failed:", err);
-    process.exit(1); // Exit if DB connection fails
-  }
+  await prisma.$connect();
+  console.log("✅ Database connected");
+};
+
+export const disconnectDB = async () => {
+  await prisma.$disconnect();
+  console.log("🛑 Database disconnected");
 };
 
 export default prisma;
