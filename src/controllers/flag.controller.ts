@@ -235,7 +235,7 @@ const deleteFlag = AsyncHandler(async (req: Request, res: Response) => {
 
   await prisma.$transaction(async (tx) => {
     await tx.featureFlag.delete({
-      where: { id, organizationId },
+      where: { id },
     });
 
     await tx.auditLog.create({
@@ -281,6 +281,23 @@ const updateFlagEnvironmentValue = AsyncHandler(
 
     if (!environment) {
       throw new ApiError(404, "Environment not found");
+    }
+
+    // Validates value type based on flag type
+    if (flag.type === "BOOLEAN" && typeof value !== "boolean") {
+      throw new ApiError(400, "Value must be boolean");
+    }
+
+    if (flag.type === "NUMBER" && typeof value !== "number") {
+      throw new ApiError(400, "Value must be number");
+    }
+
+    if (flag.type === "STRING" && typeof value !== "string") {
+      throw new ApiError(400, "Value must be string");
+    }
+
+    if (flag.type === "JSON" && typeof value !== "object") {
+      throw new ApiError(400, "Value must be a JSON object");
     }
 
     await prisma.$transaction(async (tx) => {
