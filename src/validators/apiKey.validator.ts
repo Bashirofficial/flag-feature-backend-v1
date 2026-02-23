@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+/**
+ * Validates API creation
+ */
 export const createApiKeySchema = z.object({
   body: z.object({
     // Using the unified error parameter for both required and format checks
@@ -17,3 +20,20 @@ export const createApiKeySchema = z.object({
       .optional(),
   }),
 });
+
+/**
+ * Validate :id param
+ */
+export const apiKeyIdParamSchema = z.object({
+  params: z.object({
+    id: z.uuid({
+      error: "Invalid API key ID format",
+    }),
+  }),
+});
+
+/**
+ * Export inferred types for controllers
+ */
+export type CreateApiKeyInput = z.infer<typeof createApiKeySchema>["body"];
+export type ApiKeyIdParamInput = z.infer<typeof apiKeyIdParamSchema>["params"];
