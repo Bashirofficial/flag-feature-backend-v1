@@ -9,6 +9,7 @@ type Permission =
   | "api-keys:read"
   | "api-keys:write"
   | "api-keys:revoke"
+  | "api-keys:delete"
   | "users:read"
   | "users:write"
   | "environments:read"
@@ -26,6 +27,7 @@ const ROLE_PERMISSIONS: Record<"ADMIN" | "MEMBER", Permission[]> = {
     "api-keys:read",
     "api-keys:write",
     "api-keys:revoke",
+    "api-keys:delete",
     "users:read",
     "users:write",
     "environments:read",
