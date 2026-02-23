@@ -5,6 +5,10 @@ import { ApiResponse } from "../utils/ApiResponse";
 import { AsyncHandler } from "../utils/AsyncHandler";
 import { generateApiKey } from "../utils/apiKey.util";
 import { hashApiKey, getApiKeyPrefix } from "../utils/hash.util";
+import {
+  ApiKeyIdParamInput,
+  CreateApiKeyInput,
+} from "../validators/apiKey.validator";
 
 //--------- Controllers (C) ---------//
 
@@ -54,155 +58,160 @@ const getApiKeys = AsyncHandler(async (req: Request, res: Response) => {
 
 // C2. Create an API key
 
-const createApiKey = AsyncHandler(async (req: Request, res: Response) => {
-  const { environmentId, name } = req.body;
-  const organizationId = req.user!.organizationId;
+const createApiKey = AsyncHandler(
+  async (req: Request<{}, {}, CreateApiKeyInput>, res: Response) => {
+    const { environmentId, name } = req.body;
+    const organizationId = req.user!.organizationId;
 
-  const environment = await prisma.environment.findFirst({
-    where: {
-      id: environmentId,
-      organizationId,
-    },
-  });
-
-  if (!environment) {
-    throw new ApiError(404, "Environment not found");
-  }
-
-  const apiKey = generateApiKey(environment.key);
-  const hashedKey = hashApiKey(apiKey);
-  const keyPrefix = getApiKeyPrefix(apiKey);
-
-  const apiKeyRecord = await prisma.$transaction(async (tx) => {
-    const newKey = await tx.apiKey.create({
-      data: {
-        name,
-        key: hashedKey,
-        keyPrefix,
+    const environment = await prisma.environment.findFirst({
+      where: {
+        id: environmentId,
         organizationId,
-        environmentId,
-        createdById: req.user!.id,
+      },
+    });
+
+    if (!environment) {
+      throw new ApiError(404, "Environment not found");
+    }
+
+    const apiKey = generateApiKey(environment.key);
+    const hashedKey = hashApiKey(apiKey);
+    const keyPrefix = getApiKeyPrefix(apiKey);
+
+    const apiKeyRecord = await prisma.$transaction(async (tx) => {
+      const newKey = await tx.apiKey.create({
+        data: {
+          name,
+          key: hashedKey,
+          keyPrefix,
+          organizationId,
+          environmentId,
+          createdById: req.user!.id,
+        },
+        include: {
+          environment: {
+            select: {
+              name: true,
+              key: true,
+            },
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: "API_KEY_CREATED",
+          resourceType: "api_key",
+          resourceId: newKey.id,
+          resourceName: name || keyPrefix,
+          environmentKey: environment.key,
+          organizationId,
+          userId: req.user!.id,
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent"),
+        },
+      });
+      return newKey;
+    });
+
+    return res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          id: apiKeyRecord.id,
+          key: apiKey,
+          keyPrefix: apiKeyRecord.keyPrefix,
+          environment: apiKeyRecord.environment,
+        },
+        "API key has  been created successfully. Store the key securely - it will not be visible again.",
+      ),
+    );
+  },
+);
+
+// C3. Revoke API key
+const revokeApiKey = AsyncHandler(
+  async (req: Request<ApiKeyIdParamInput>, res: Response) => {
+    const { id } = req.params;
+    const organizationId = req.user!.organizationId;
+
+    const apiKey = await prisma.apiKey.findFirst({
+      where: {
+        id: id,
+        organizationId,
       },
       include: {
         environment: {
           select: {
-            name: true,
             key: true,
           },
         },
       },
     });
 
-    await tx.auditLog.create({
-      data: {
-        action: "API_KEY_CREATED",
-        resourceType: "api_key",
-        resourceId: newKey.id,
-        resourceName: name || keyPrefix,
-        environmentKey: environment.key,
-        organizationId,
-        userId: req.user!.id,
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent"),
-      },
-    });
-    return newKey;
-  });
+    if (!apiKey) {
+      throw new ApiError(404, "API key not found");
+    }
 
-  return res.status(201).json(
-    new ApiResponse(
-      201,
-      {
-        id: apiKeyRecord.id,
-        key: apiKey,
-        keyPrefix: apiKeyRecord.keyPrefix,
-        environment: apiKeyRecord.environment,
-      },
-      "API key has  been created successfully. Store the key securely - it will not be visible again.",
-    ),
-  );
-});
+    if (apiKey.status === "REVOKED") {
+      throw new ApiError(400, "API key is already revoked");
+    }
 
-// C3. Revoke API key
-const revokeApiKey = AsyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const organizationId = req.user!.organizationId;
-
-  const apiKey = await prisma.apiKey.findFirst({
-    where: {
-      id: id,
-      organizationId,
-    },
-    include: {
-      environment: {
-        select: {
-          key: true,
+    await prisma.$transaction(async (tx) => {
+      await tx.apiKey.update({
+        where: { id },
+        data: {
+          status: "REVOKED",
+          revokedAt: new Date(),
         },
-      },
-    },
-  });
+      });
 
-  if (!apiKey) {
-    throw new ApiError(404, "API key not found");
-  }
-
-  if (apiKey.status === "REVOKED") {
-    throw new ApiError(400, "API key is already revoked");
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.apiKey.update({
-      where: { id },
-      data: {
-        status: "REVOKED",
-        revokedAt: new Date(),
-      },
+      await tx.auditLog.create({
+        data: {
+          action: "API_KEY_REVOKED",
+          resourceType: "api_key",
+          resourceId: id,
+          resourceName: apiKey.name || apiKey.keyPrefix,
+          environmentKey: apiKey.environment.key,
+          organizationId,
+          userId: req.user!.id,
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent"),
+        },
+      });
     });
 
-    await tx.auditLog.create({
-      data: {
-        action: "API_KEY_REVOKED",
-        resourceType: "api_key",
-        resourceId: id,
-        resourceName: apiKey.name || apiKey.keyPrefix,
-        environmentKey: apiKey.environment.key,
-        organizationId,
-        userId: req.user!.id,
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent"),
-      },
-    });
-  });
-
-  return res
-    .status(201)
-    .json(new ApiResponse(200, {}, "API key has been revoked successfully"));
-});
-
-const deleteApiKey = AsyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const organizationId = req.user!.organizationId;
-
-  const apiKey = await prisma.apiKey.findFirst({
-    where: {
-      id: id,
-      organizationId,
-    },
-  });
-
-  if (!apiKey) {
-    throw new ApiError(404, "API key not found");
-  }
-
-  await prisma.apiKey.delete({
-    where: { id },
-  });
-
-  return res
-    .status(201)
-    .json(new ApiResponse(200, {}, "API key has been deleted successfully"));
-});
+    return res
+      .status(200)
+      .json(new ApiResponse(200, {}, "API key has been revoked successfully"));
+  },
+);
 
 // C4. Delete API key
+const deleteApiKey = AsyncHandler(
+  async (req: Request<ApiKeyIdParamInput>, res: Response) => {
+    const { id } = req.params;
+    const organizationId = req.user!.organizationId;
+
+    const apiKey = await prisma.apiKey.findFirst({
+      where: {
+        id: id,
+        organizationId,
+      },
+    });
+
+    if (!apiKey) {
+      throw new ApiError(404, "API key not found");
+    }
+
+    await prisma.apiKey.delete({
+      where: { id },
+    });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, {}, "API key has been deleted successfully"));
+  },
+);
 
 export { getApiKeys, createApiKey, revokeApiKey, deleteApiKey };
