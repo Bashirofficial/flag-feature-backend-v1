@@ -39,10 +39,15 @@ app.get("/health", (req, res) => {
 });
 
 // ================= Routes =================
-//import userRouter from "./routes/user.route";
+import userRouter from "./routes/user.route";
+import flagRouter from "./routes/flag.route";
+import apiKeyRouter from "./routes/apiKey.route";
+import publicRouter from "./routes/public.route";
 
-//app.use("/api/v1/users", userRouter);
-//app.use("/api/v1/projects/:id/files", fileRouter);
+app.use("/api/v1/user", userRouter);
+app.use("/api/v1/flags", flagRouter);
+app.use("/api/v1/api-keys", apiKeyRouter);
+app.use("/api/v1/public", publicRouter);
 
 // ================= Error Handling =================
 app.use(notFoundHandler); // 404 handler - must be after all routes
