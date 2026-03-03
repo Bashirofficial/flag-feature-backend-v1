@@ -1,4 +1,4 @@
-import jwt from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
 import { ApiError } from "./ApiError";
 
 const {
@@ -25,13 +25,13 @@ export interface RefreshPayload {
 
 export const generateAccessToken = (payload: AccessPayload) => {
   return jwt.sign(payload, ACCESS_TOKEN_SECRET, {
-    expiresIn: JWT_ACCESS_EXPIRES,
+    expiresIn: JWT_ACCESS_EXPIRES as SignOptions["expiresIn"],
   });
 };
 
 export const generateRefreshToken = (payload: RefreshPayload) => {
   return jwt.sign(payload, REFRESH_TOKEN_SECRET, {
-    expiresIn: JWT_REFRESH_EXPIRES,
+    expiresIn: JWT_REFRESH_EXPIRES as SignOptions["expiresIn"],
   });
 };
 
