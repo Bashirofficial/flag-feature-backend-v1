@@ -36,4 +36,3 @@ export const apiKeyIdParamSchema = z.object({
  * Export inferred types for controllers
  */
 export type CreateApiKeyInput = z.infer<typeof createApiKeySchema>["body"];
-export type ApiKeyIdParamInput = z.infer<typeof apiKeyIdParamSchema>["params"];
