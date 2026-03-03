@@ -32,7 +32,7 @@ const getAllFlags = AsyncHandler(async (req: Request, res: Response) => {
 
 /* C2. Get a single flag with environment values */
 const getFlag = AsyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const organizationId = req.user!.organizationId;
 
   const flag = await prisma.featureFlag.findFirst({
@@ -82,15 +82,16 @@ const getFlag = AsyncHandler(async (req: Request, res: Response) => {
 
 /* C3. Create new feature flag */
 const createFlag = AsyncHandler(async (req: Request, res: Response) => {
-  const { key, name, description, type = "BOOLEAN", defaultValue } = req.body;
-  const organizationId = req.user!.organizationId;
-
   const TYPE_DEFAULTS = {
     BOOLEAN: false,
     NUMBER: 0,
     STRING: "",
     JSON: {},
-  };
+  } as const; //typed as 'const' to make the values literal types
+
+  const { key, name, description, defaultValue } = req.body;
+  const type = (req.body.type || "BOOLEAN") as keyof typeof TYPE_DEFAULTS;
+  const organizationId = req.user!.organizationId;
 
   if (!(type in TYPE_DEFAULTS)) {
     throw new ApiError(400, "Invalid flag type");
@@ -169,7 +170,7 @@ const createFlag = AsyncHandler(async (req: Request, res: Response) => {
 
 /* C4. Update a flag metadata (key, name, description, type) */
 const updateFlag = AsyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const { name, description, isActive } = req.body;
   const organizationId = req.user!.organizationId;
 
@@ -222,7 +223,7 @@ const updateFlag = AsyncHandler(async (req: Request, res: Response) => {
 
 /* C5. Delete a flag */
 const deleteFlag = AsyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const organizationId = req.user!.organizationId;
 
   const flag = await prisma.featureFlag.findFirst({
@@ -260,7 +261,7 @@ const deleteFlag = AsyncHandler(async (req: Request, res: Response) => {
 /* C6. Update flag for specific value of environment */
 const updateFlagEnvironmentValue = AsyncHandler(
   async (req: Request, res: Response) => {
-    const { id, envId } = req.params;
+    const { id, envId } = req.params as { id: string; envId: string };
     const { value } = req.body;
     const organizationId = req.user!.organizationId;
 
