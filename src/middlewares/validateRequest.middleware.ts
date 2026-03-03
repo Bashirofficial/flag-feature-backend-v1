@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from "express";
-import { AnyZodObject, ZodError } from "zod";
+import { ZodObject, ZodError } from "zod";
 import { ApiError } from "../utils/ApiError";
 
 /**
  * Middleware factory for Zod schema validation
  * Validates request body, params, and query against provided schema
  */
-export const validateRequest = (schema: AnyZodObject) => {
+export const validateRequest = (schema: ZodObject<any, any>) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       await schema.parseAsync({
@@ -17,9 +17,9 @@ export const validateRequest = (schema: AnyZodObject) => {
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        const errors = error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
+        const errors = error.issues.map((issue) => ({
+          field: issue.path.join("."),
+          message: issue.message,
         }));
 
         next(new ApiError(400, "Validation failed", errors));
