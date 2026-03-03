@@ -41,7 +41,7 @@ const getAllFlags = AsyncHandler(async (req: Request, res: Response) => {
 
 /* C2. Get a single flag by key value */
 const getFlagByKey = AsyncHandler(async (req: Request, res: Response) => {
-  const { key } = req.params;
+  const { key } = req.params as { key: string };
   const { organizationId, environmentId } = req.apiKey!;
 
   const flag = await prisma.featureFlag.findFirst({
@@ -133,7 +133,7 @@ const getBulkFlags = AsyncHandler(async (req: Request, res: Response) => {
 
 /* C4. Check if a flag is enabled  */
 const isFlagEnabled = AsyncHandler(async (req: Request, res: Response) => {
-  const { key } = req.params;
+  const { key } = req.params as { key: string };
   const { organizationId, environmentId } = req.apiKey!;
 
   const flag = await prisma.featureFlag.findFirst({
