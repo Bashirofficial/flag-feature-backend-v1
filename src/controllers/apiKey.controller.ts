@@ -5,10 +5,7 @@ import { ApiResponse } from "../utils/ApiResponse";
 import { AsyncHandler } from "../utils/AsyncHandler";
 import { generateApiKey } from "../utils/apiKey.util";
 import { hashApiKey, getApiKeyPrefix } from "../utils/hash.util";
-import {
-  ApiKeyIdParamInput,
-  CreateApiKeyInput,
-} from "../validators/apiKey.validator";
+import { CreateApiKeyInput } from "../validators/apiKey.validator";
 
 //--------- Controllers (C) ---------//
 
@@ -130,88 +127,84 @@ const createApiKey = AsyncHandler(
 );
 
 // C3. Revoke API key
-const revokeApiKey = AsyncHandler(
-  async (req: Request<ApiKeyIdParamInput>, res: Response) => {
-    const { id } = req.params;
-    const organizationId = req.user!.organizationId;
+const revokeApiKey = AsyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const organizationId = req.user!.organizationId;
 
-    const apiKey = await prisma.apiKey.findFirst({
-      where: {
-        id: id,
+  const apiKey = await prisma.apiKey.findFirst({
+    where: {
+      id: id,
+      organizationId,
+    },
+    include: {
+      environment: {
+        select: {
+          key: true,
+        },
+      },
+    },
+  });
+
+  if (!apiKey) {
+    throw new ApiError(404, "API key not found");
+  }
+
+  if (apiKey.status === "REVOKED") {
+    throw new ApiError(400, "API key is already revoked");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.apiKey.update({
+      where: { id },
+      data: {
+        status: "REVOKED",
+        revokedAt: new Date(),
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        action: "API_KEY_REVOKED",
+        resourceType: "api_key",
+        resourceId: id,
+        resourceName: apiKey.name || apiKey.keyPrefix,
+        environmentKey: apiKey.environment.key,
         organizationId,
-      },
-      include: {
-        environment: {
-          select: {
-            key: true,
-          },
-        },
+        userId: req.user!.id,
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
       },
     });
+  });
 
-    if (!apiKey) {
-      throw new ApiError(404, "API key not found");
-    }
-
-    if (apiKey.status === "REVOKED") {
-      throw new ApiError(400, "API key is already revoked");
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.apiKey.update({
-        where: { id },
-        data: {
-          status: "REVOKED",
-          revokedAt: new Date(),
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          action: "API_KEY_REVOKED",
-          resourceType: "api_key",
-          resourceId: id,
-          resourceName: apiKey.name || apiKey.keyPrefix,
-          environmentKey: apiKey.environment.key,
-          organizationId,
-          userId: req.user!.id,
-          ipAddress: req.ip,
-          userAgent: req.get("user-agent"),
-        },
-      });
-    });
-
-    return res
-      .status(200)
-      .json(new ApiResponse(200, {}, "API key has been revoked successfully"));
-  },
-);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "API key has been revoked successfully"));
+});
 
 // C4. Delete API key
-const deleteApiKey = AsyncHandler(
-  async (req: Request<ApiKeyIdParamInput>, res: Response) => {
-    const { id } = req.params;
-    const organizationId = req.user!.organizationId;
+const deleteApiKey = AsyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const organizationId = req.user!.organizationId;
 
-    const apiKey = await prisma.apiKey.findFirst({
-      where: {
-        id: id,
-        organizationId,
-      },
-    });
+  const apiKey = await prisma.apiKey.findFirst({
+    where: {
+      id: id,
+      organizationId,
+    },
+  });
 
-    if (!apiKey) {
-      throw new ApiError(404, "API key not found");
-    }
+  if (!apiKey) {
+    throw new ApiError(404, "API key not found");
+  }
 
-    await prisma.apiKey.delete({
-      where: { id },
-    });
+  await prisma.apiKey.delete({
+    where: { id },
+  });
 
-    return res
-      .status(200)
-      .json(new ApiResponse(200, {}, "API key has been deleted successfully"));
-  },
-);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "API key has been deleted successfully"));
+});
 
 export { getApiKeys, createApiKey, revokeApiKey, deleteApiKey };
