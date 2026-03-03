@@ -8,7 +8,7 @@
     "strict": true,
     "strictNullChecks": true,
     "noImplicitAny": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "outDir": "build",
     "rootDir": "./src",
@@ -16,7 +16,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "typeRoots": ["./src/types", "./node_modules/@types"],
-    "types": ["node", "express", "jest"]
+    "types": ["node", "express"] //"jest"
   },
   "include": [
     "src/**/*",
