@@ -122,12 +122,17 @@ const createFlag = AsyncHandler(async (req: Request, res: Response) => {
   let initialValue: any =
     defaultValue !== undefined ? defaultValue : TYPE_DEFAULTS[type];
 
-  if (type === "JSON" && typeof initialValue !== "object") {
-    throw new ApiError(400, "defaultValue must be a JSON object");
+  if (type === "JSON") {
+    if (
+      typeof initialValue !== "object" ||
+      initialValue === null ||
+      Array.isArray(initialValue)
+    ) {
+      throw new ApiError(400, "defaultValue must be a JSON object");
+    }
   } else if (typeof initialValue !== type.toLowerCase()) {
     throw new ApiError(400, `defaultValue must be ${type.toLowerCase()}`);
   }
-
   const flag = await prisma.$transaction(async (tx) => {
     const newFlag = await tx.featureFlag.create({
       data: {
@@ -145,6 +150,7 @@ const createFlag = AsyncHandler(async (req: Request, res: Response) => {
         environmentId: env.id,
         value: initialValue,
       })),
+      skipDuplicates: true,
     });
 
     await tx.auditLog.create({
