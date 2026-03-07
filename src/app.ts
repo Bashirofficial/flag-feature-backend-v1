@@ -43,10 +43,12 @@ import userRouter from "./routes/user.route";
 import flagRouter from "./routes/flag.route";
 import apiKeyRouter from "./routes/apiKey.route";
 import publicRouter from "./routes/public.route";
+import environmentRouter from "./routes/environment.route";
 
 app.use("/api/v1/user", userRouter);
 app.use("/api/v1/flags", flagRouter);
 app.use("/api/v1/api-keys", apiKeyRouter);
+app.use("/api/v1/environment", environmentRouter);
 app.use("/api/v1/public", publicRouter);
 
 // ================= Error Handling =================
