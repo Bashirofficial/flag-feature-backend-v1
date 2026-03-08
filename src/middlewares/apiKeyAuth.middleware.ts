@@ -64,7 +64,7 @@ export const authenticateApiKey = AsyncHandler(
     req.apiKey = {
       id: apiKeyRecord.id,
       organizationId: apiKeyRecord.organizationId,
-      environmentId: apiKeyRecord.environmentId,
+      environmentId: apiKeyRecord.environment.id,
       environmentKey: apiKeyRecord.environment.key,
     };
 
