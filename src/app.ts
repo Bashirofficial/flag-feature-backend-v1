@@ -44,12 +44,16 @@ import flagRouter from "./routes/flag.route";
 import apiKeyRouter from "./routes/apiKey.route";
 import publicRouter from "./routes/public.route";
 import environmentRouter from "./routes/environment.route";
+import organizationRouter from "./routes/organization.route";
+import auditLogRouter from "./routes/auditLog.route";
 
 app.use("/api/v1/user", userRouter);
+app.use("/api/v1/organization", organizationRouter);
 app.use("/api/v1/flags", flagRouter);
 app.use("/api/v1/api-keys", apiKeyRouter);
-app.use("/api/v1/environment", environmentRouter);
+app.use("/api/v1/environments", environmentRouter);
 app.use("/api/v1/public", publicRouter);
+app.use("/api/v1/audit-logs", auditLogRouter);
 
 // ================= Error Handling =================
 app.use(notFoundHandler); // 404 handler - must be after all routes
