@@ -59,4 +59,4 @@ app.use("/api/v1/audit-logs", auditLogRouter);
 app.use(notFoundHandler); // 404 handler - must be after all routes
 app.use(errorHandler); // Global error handler - must be after all routes
 
-export { app };
+export default app;
