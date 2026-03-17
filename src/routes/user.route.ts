@@ -12,8 +12,10 @@ import {
   refreshSchema,
 } from "../validators/auth.validator";
 import { authenticate } from "../middlewares/auth.middleware";
+import { userRateLimit } from "../middlewares/rateLimit.middleware";
 
 const router = Router();
+router.use(userRateLimit);
 
 router
   .route("/refresh-token")
