@@ -3,6 +3,7 @@ dotenv.config();
 
 import app from "./app";
 import { connectDB, disconnectDB } from "./db";
+import { logger } from "./config/logger";
 
 const PORT = process.env.PORT || 5000;
 
@@ -11,37 +12,45 @@ const startServer = async () => {
     await connectDB();
 
     const server = app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📦 Environment: ${process.env.NODE_ENV}`);
+      logger.info(
+        { port: PORT, env: process.env.NODE_ENV },
+        "🚀 Server started successfully",
+      );
     });
 
     // Graceful Shutdown
-    const shutdown = async () => {
-      console.log("\n🛑 Shutting down...");
+    const shutdown = async (signal: string) => {
+      logger.warn({ signal }, "🛑 Shutting down server...");
 
       server.close(async () => {
-        await disconnectDB();
-        process.exit(0);
+        try {
+          await disconnectDB();
+          logger.info("Successfully disconnected from DB.");
+          process.exit(0);
+        } catch (err) {
+          logger.error({ err }, "Error during DB connection.");
+          process.exit(1);
+        }
       });
     };
 
     // Handle shutdown signals
-    process.on("SIGTERM", shutdown);
-    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
 
     // Handle unhandled promise rejections
     process.on("unhandledRejection", (reason, promise) => {
-      console.error("Unhandled Rejection at:", promise, "reason:", reason);
-      shutdown();
+      logger.error({ reason, promise }, "Unhandled Rejection at Promise");
+      shutdown("unhandledRejection");
     });
 
-    // Handle uncaught Exception rejections
+    // Handle uncaught Exception
     process.on("uncaughtException", (err) => {
-      console.error("Uncaught Exception:", err);
-      shutdown();
+      logger.fatal({ err }, "Uncaught Exception detected!");
+      shutdown("uncaughtException");
     });
   } catch (error) {
-    console.error("❌ Failed to start server:", error);
+    logger.error({ err: error }, "❌ Failed to start server");
     process.exit(1);
   }
 };
