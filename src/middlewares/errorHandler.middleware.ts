@@ -1,100 +1,75 @@
 import { Request, Response, NextFunction } from "express";
 import { ApiError } from "../utils/ApiError";
 import { Prisma } from "@prisma/client";
+import { logger } from "../config/logger";
 /**
  * Global error handling middleware
  * Must be placed after all routes
  */
 export const errorHandler = (
-  err: Error,
+  err: any,
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
-  console.error("Error:", err);
+  // Logs the error with pino
+  logger.error(
+    {
+      err,
+      userId: (req as any).user?.id,
+      orgName: (req as any).user?.orgName,
+      method: req.method,
+      url: req.originalUrl,
+      body: req.body,
+    },
+    "Request Error",
+  );
 
-  // Handle ApiError
+  let statusCode = 500;
+  let message = "Internal server error";
+  let errors: any[] = [];
+
+  // Handle Known Errors
   if (err instanceof ApiError) {
-    return res.status(err.statusCode).json({
-      success: false,
-      statusCode: err.statusCode,
-      message: err.message,
-      errors: err.errors,
-      ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
-    });
-  }
-
-  // Handle Prisma errors
-  if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    // Unique constraint violation
+    statusCode: err.statusCode;
+    message: err.message;
+    errors: err.errors;
+  } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2002") {
-      return res.status(409).json({
-        success: false,
-        statusCode: 409,
-        message: "A record with this value already exists",
-        errors: [],
-      });
+      // Unique constraint violation
+      statusCode: 409;
+      message: "A record with this value already exists";
     }
 
-    // Record not found
     if (err.code === "P2025") {
-      return res.status(404).json({
-        success: false,
-        statusCode: 404,
-        message: "Record not found",
-        errors: [],
-      });
+      // Record not found
+      statusCode: 404;
+      message: "Record not found";
     }
 
-    // Foreign key constraint violation
     if (err.code === "P2003") {
-      return res.status(400).json({
-        success: false,
-        statusCode: 400,
-        message: "Invalid reference to related record",
-        errors: [],
-      });
+      // Foreign key constraint violation
+      statusCode: 400;
+      message: "Invalid reference to related record";
     }
+  } else if (err instanceof Prisma.PrismaClientValidationError) {
+    // Handle Prisma validation errors
+    statusCode: 400;
+    message: "Invalid data provided";
+  } else if (err.name === "JsonWebTokenError") {
+    statusCode: 401;
+    message: "Invalid token";
+  } else if (err.name === "TokenExpiredError") {
+    statusCode: 401;
+    message: "Token expired";
   }
 
-  // Handle Prisma validation errors
-  if (err instanceof Prisma.PrismaClientValidationError) {
-    return res.status(400).json({
-      success: false,
-      statusCode: 400,
-      message: "Invalid data provided",
-      errors: [],
-    });
-  }
-
-  // Handle JWT errors
-  if (err.name === "JsonWebTokenError") {
-    return res.status(401).json({
-      success: false,
-      statusCode: 401,
-      message: "Invalid token",
-      errors: [],
-    });
-  }
-
-  if (err.name === "TokenExpiredError") {
-    return res.status(401).json({
-      success: false,
-      statusCode: 401,
-      message: "Token expired",
-      errors: [],
-    });
-  }
-
-  // Default error
-  return res.status(500).json({
+  // Final response
+  return res.status(statusCode).json({
     success: false,
-    statusCode: 500,
-    message:
-      process.env.NODE_ENV === "development"
-        ? err.message
-        : "Internal server error",
-    errors: [],
+    statusCode,
+    message: process.env.NODE_ENV === "development" ? err.message : message,
+    errors,
     ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
   });
 };
