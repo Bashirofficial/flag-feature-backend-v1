@@ -6,8 +6,10 @@ import {
   errorHandler,
   notFoundHandler,
 } from "./middlewares/errorHandler.middleware";
+import { httpLogger } from "./config/logger";
 
 const app: Application = express();
+app.use(httpLogger);
 
 // ================= Security =================
 app.use(helmet());
