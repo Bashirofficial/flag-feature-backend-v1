@@ -83,7 +83,7 @@ export const httpLogger = pinoHttp({
   },
 
   customErrorMessage: (req, res, err) => {
-    return `${req.method} ${req.url} failed with status ${res.statusCode}: ${err.message}`;
+    return `${req.method} ${req.url} failed with status ${res.statusCode}`;
   },
 
   customProps: (req: any) => ({
