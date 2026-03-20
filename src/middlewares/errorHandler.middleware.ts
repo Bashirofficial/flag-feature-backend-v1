@@ -31,37 +31,33 @@ export const errorHandler = (
 
   // Handle Known Errors
   if (err instanceof ApiError) {
-    statusCode: err.statusCode;
-    message: err.message;
-    errors: err.errors;
+    statusCode = err.statusCode;
+    message = err.message;
+    errors = err.errors;
   } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2002") {
       // Unique constraint violation
-      statusCode: 409;
-      message: "A record with this value already exists";
-    }
-
-    if (err.code === "P2025") {
+      statusCode = 409;
+      message = "A record with this value already exists";
+    } else if (err.code === "P2025") {
       // Record not found
-      statusCode: 404;
-      message: "Record not found";
-    }
-
-    if (err.code === "P2003") {
+      statusCode = 404;
+      message = "Record not found";
+    } else if (err.code === "P2003") {
       // Foreign key constraint violation
-      statusCode: 400;
-      message: "Invalid reference to related record";
+      statusCode = 400;
+      message = "Invalid reference to related record";
     }
   } else if (err instanceof Prisma.PrismaClientValidationError) {
     // Handle Prisma validation errors
-    statusCode: 400;
-    message: "Invalid data provided";
+    statusCode = 400;
+    message = "Invalid data provided";
   } else if (err.name === "JsonWebTokenError") {
-    statusCode: 401;
-    message: "Invalid token";
+    statusCode = 401;
+    message = "Invalid token";
   } else if (err.name === "TokenExpiredError") {
-    statusCode: 401;
-    message: "Token expired";
+    statusCode = 401;
+    message = "Token expired";
   }
 
   // Final response
