@@ -47,6 +47,8 @@ export const logger = pino({
 
       // Body fields
       "password",
+      "body.password",
+      "body.email",
       "token",
       "accessToken",
       "refreshToken",
@@ -78,12 +80,21 @@ export const httpLogger = pinoHttp({
     },
   },
 
+  customLogLevel: (req, res, err) => {
+    if (res.statusCode >= 500 || err) return "error";
+    if (res.statusCode >= 400) return "warn";
+    return "info";
+  },
+
   customSuccessMessage: (req, res) => {
-    return `${req.method} ${req.url} completed with status ${res.statusCode}`;
+    if (res.statusCode >= 400) {
+      return `${req.method} ${req.url} rejected with status ${res.statusCode}`;
+    }
+    return `${req.method} ${req.url} completed successfully`;
   },
 
   customErrorMessage: (req, res, err) => {
-    return `${req.method} ${req.url} failed with status ${res.statusCode}`;
+    return `${req.method} ${req.url} crashed ${err.message}`;
   },
 
   customProps: (req: any) => ({
