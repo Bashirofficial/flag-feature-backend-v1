@@ -3,7 +3,9 @@ import prisma from "../db";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
 import { AsyncHandler } from "../utils/AsyncHandler";
+import CacheService from "../utils/cache.util";
 
+const cache = CacheService.getInstance();
 //--------- Controllers (C) ---------//
 
 /* C1. Get all flags for the organization */
