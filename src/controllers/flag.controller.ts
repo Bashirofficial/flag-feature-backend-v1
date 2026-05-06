@@ -224,6 +224,12 @@ const updateFlag = AsyncHandler(async (req: Request, res: Response) => {
     return updated;
   });
 
+  // Invalidate cache if flag status changed
+  if (flag.isActive !== isActive) {
+    await cache.delPattern(`flags:${organizationId}:*`);
+    await cache.delPattern(`flag:${organizationId}:*:${flag.key}`);
+  }
+
   return res
     .status(200)
     .json(new ApiResponse(200, updatedFlag, "Flag updated successfully"));
@@ -260,6 +266,10 @@ const deleteFlag = AsyncHandler(async (req: Request, res: Response) => {
       },
     });
   });
+
+  // Invalidate caches for deleted flag
+  await cache.delPattern(`flags:${organizationId}:*`);
+  await cache.delPattern(`flag:${organizationId}:*:${flag.key}`);
 
   return res
     .status(200)
@@ -351,6 +361,10 @@ const updateFlagEnvironmentValue = AsyncHandler(
         },
       });
     });
+
+    // Invalidate caches for this flag in all environments
+    await cache.delPattern(`flags:${organizationId}:*`);
+    await cache.delPattern(`flag:${organizationId}:*:${flag.key}`);
 
     return res
       .status(200)
