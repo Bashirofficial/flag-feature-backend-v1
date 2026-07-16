@@ -11,11 +11,17 @@ const cache = CacheService.getInstance();
 
 /* C1. Get all flags for the environment */
 const getAllFlags = AsyncHandler(async (req: Request, res: Response) => {
+  console.time("Controller");
+
   const { organizationId, environmentId, environmentKey } = req.apiKey!;
   const cacheKey = `flags:${organizationId}:${environmentId}`;
 
+  console.time("Redis GET"); //
   const cachedFlags = await cache.get(cacheKey);
+  console.timeEnd("Redis GET"); //
+
   if (cachedFlags) {
+    console.timeEnd("Controller");
     return res.status(200).json(
       new ApiResponse(
         200,
@@ -28,6 +34,7 @@ const getAllFlags = AsyncHandler(async (req: Request, res: Response) => {
     );
   }
 
+  console.time("Prisma Query"); //
   const flags = await prisma.featureFlag.findMany({
     where: { organizationId, isActive: true },
     include: {
@@ -38,6 +45,9 @@ const getAllFlags = AsyncHandler(async (req: Request, res: Response) => {
       },
     },
   });
+  console.timeEnd("Prisma Query"); //
+
+  console.time("Transform");
   const flagsMap: Record<string, any> = {};
 
   flags.forEach((flag) => {
@@ -45,9 +55,13 @@ const getAllFlags = AsyncHandler(async (req: Request, res: Response) => {
       flagsMap[flag.key] = flag.environmentValues[0]?.value ?? null;
     }
   });
+  console.timeEnd("Transform");
 
+  console.time("Redis SET");
   await cache.set(cacheKey, JSON.stringify(flagsMap), 300); // Cache for 5 minutes
+  console.timeEnd("Redis SET");
 
+  console.timeEnd("Controller");
   return res.status(200).json(
     new ApiResponse(
       200,
