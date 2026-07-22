@@ -48,9 +48,9 @@ import publicRouter from "./routes/public.route";
 import environmentRouter from "./routes/environment.route";
 import organizationRouter from "./routes/organization.route";
 import auditLogRouter from "./routes/auditLog.route";
-import testRouter from "./routes/test.route";
+//import testRouter from "./routes/test.route";
 
-app.use("/api/v1/test", testRouter);
+//app.use("/api/v1/test", testRouter);
 app.use("/api/v1/user", userRouter);
 app.use("/api/v1/organization", organizationRouter);
 app.use("/api/v1/flags", flagRouter);
