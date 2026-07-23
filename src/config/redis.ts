@@ -20,6 +20,15 @@ redisClient.on("connect", () => {
   console.log("✅ Redis connected");
 });
 
+// Diagnostic check to see your actual internal network speed
+redisClient.on("ready", async () => {
+  console.log("🚀 Redis Client is fully ready for commands.");
+  const start = performance.now();
+  await redisClient.ping();
+  const end = performance.now();
+  console.log(`⏱️ Baseline Socket Latency: ${(end - start).toFixed(2)}ms`);
+});
+
 export const connectRedis = async () => {
   await redisClient.ping();
 };
