@@ -4,6 +4,7 @@
 import Redis from "ioredis";
 
 const redisClient = new Redis(process.env.REDIS_URL as string, {
+  family: 0, // 0 = IPv4, 1 = IPv6 Added this to debug latency issue with Redis connection on Railway
   retryStrategy(times) {
     const delay = Math.min(times * 50, 2000);
     console.warn(`Redis connection lost. Retrying in ${delay}ms...`);
