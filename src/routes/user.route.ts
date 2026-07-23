@@ -17,6 +17,7 @@ import { userRateLimit } from "../middlewares/rateLimit.middleware";
 import cache from "../utils/cache.util"; //Temporarily added for testing purpose, will be removed later
 import prisma from "../db"; //Temporarily added for testing purpose, will be removed later
 import { AsyncHandler } from "../utils/AsyncHandler";
+import redisClient from "../config/redis";
 
 const router = Router();
 //router.use(userRateLimit);
@@ -42,6 +43,7 @@ router.get("/ping", (_req, res) => {
 router.get(
   "/redis-test",
   AsyncHandler(async (_req, res) => {
+    console.log(redisClient.status);
     const payload = {
       timestamp: Date.now(),
       message: "Hello Railway",
