@@ -19,7 +19,7 @@ import prisma from "../db"; //Temporarily added for testing purpose, will be rem
 import { AsyncHandler } from "../utils/AsyncHandler";
 
 const router = Router();
-router.use(userRateLimit);
+//router.use(userRateLimit);
 
 router
   .route("/refresh-token")
