@@ -16,17 +16,21 @@ const getAllFlags = AsyncHandler(async (req: Request, res: Response) => {
   const { organizationId, environmentId, environmentKey } = req.apiKey!;
   const cacheKey = `flags:${organizationId}:${environmentId}`;
 
-  console.time("Redis GET"); //
+  console.time("Redis Network");
   const cachedFlags = await cache.get(cacheKey);
-  console.timeEnd("Redis GET"); //
+  console.timeEnd("Redis Network");
 
   if (cachedFlags) {
+    console.time("JSON Parse");
+    const parsedFlags = JSON.parse(cachedFlags);
+    console.timeEnd("JSON Parse");
+
     console.timeEnd("Controller");
     return res.status(200).json(
       new ApiResponse(
         200,
         {
-          flags: JSON.parse(cachedFlags),
+          flags: parsedFlags,
           environment: environmentKey,
         },
         "Flags retrieved successfully from cache",
