@@ -16,6 +16,7 @@ import { userRateLimit } from "../middlewares/rateLimit.middleware";
 
 import cache from "../utils/cache.util"; //Temporarily added for testing purpose, will be removed later
 import prisma from "../db"; //Temporarily added for testing purpose, will be removed later
+import { AsyncHandler } from "../utils/AsyncHandler";
 
 const router = Router();
 router.use(userRateLimit);
@@ -28,42 +29,68 @@ router.route("/login").post(validateRequest(loginSchema), login);
 router.route("/logout").post(authenticate, logout);
 
 //Temporarily added for testing purpose, will be removed later ----------------------------
-router.get("/ping", (req, res) => {
-  res.json({
-    ok: true,
-  });
-});
-
-router.get("/redis-test", async (_req, res) => {
-  console.time("Redis SET");
-
-  await cache.getInstance().set("benchmark:test", "Hello Railway", 60);
-
-  console.timeEnd("Redis SET");
-
-  console.time("Redis GET");
-
-  const value = await cache.getInstance().get("benchmark:test");
-
-  console.timeEnd("Redis GET");
-
+// 1. Express only (No Redis, No Prisma)
+router.get("/ping", (_req, res) => {
   res.status(200).json({
     success: true,
-    value,
+    timestamp: Date.now(),
+    message: "Pong!",
   });
 });
 
-router.get("/db-test", async (_req, res) => {
-  console.time("Prisma SELECT 1");
+// 2. Redis Benchmark
+router.get(
+  "/redis-test",
+  AsyncHandler(async (_req, res) => {
+    const payload = {
+      timestamp: Date.now(),
+      message: "Hello Railway",
+    };
 
-  const result = await prisma.$queryRaw`SELECT 1`;
+    console.time("Redis SET");
 
-  console.timeEnd("Prisma SELECT 1");
+    await cache.getInstance().set(
+      "benchmark:test",
+      JSON.stringify(payload),
+      60, // TTL: 60 seconds
+    );
 
-  res.status(200).json({
-    success: true,
-    result,
-  });
-});
+    console.timeEnd("Redis SET");
+
+    console.time("Redis GET");
+
+    const value = await cache.getInstance().get("benchmark:test");
+
+    console.timeEnd("Redis GET");
+
+    console.time("JSON Parse");
+
+    const parsedValue = value ? JSON.parse(value) : null;
+
+    console.timeEnd("JSON Parse");
+
+    res.status(200).json({
+      success: true,
+      data: parsedValue,
+    });
+  }),
+);
+
+// 3. Prisma Benchmark
+router.get(
+  "/db-test",
+  AsyncHandler(async (_req, res) => {
+    console.time("Prisma SELECT 1");
+
+    const result = await prisma.$queryRaw`SELECT 1`;
+
+    console.timeEnd("Prisma SELECT 1");
+
+    res.status(200).json({
+      success: true,
+      result,
+    });
+  }),
+);
 
 export default router;
