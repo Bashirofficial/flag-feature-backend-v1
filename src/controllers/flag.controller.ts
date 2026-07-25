@@ -171,6 +171,10 @@ const createFlag = AsyncHandler(async (req: Request, res: Response) => {
     return newFlag;
   });
 
+  // Invalidate caches for all environments since a new flag has been added
+  await Promise.all(
+    environments.map((env) => cache.del(`flags:${organizationId}:${env.id}`)),
+  );
   return res
     .status(201)
     .json(new ApiResponse(201, { id: flag.id }, "Flag created successfully"));
