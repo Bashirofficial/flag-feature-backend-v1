@@ -67,13 +67,11 @@ router.get(
 
     console.time("JSON Parse");
 
-    const parsedValue = value ? JSON.parse(value) : null;
-
     console.timeEnd("JSON Parse");
 
     res.status(200).json({
       success: true,
-      data: parsedValue,
+      data: value,
     });
   }),
 );
