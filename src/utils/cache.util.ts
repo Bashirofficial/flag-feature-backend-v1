@@ -13,23 +13,22 @@ export class CacheService {
     return CacheService.instance;
   }
 
-  async get(key: string): Promise<string | null> {
+  async get<T>(key: string): Promise<T | null> {
     try {
-      return await this.client.get(key);
+      const value = await this.client.get(key);
+      if (!value) return null;
+
+      return JSON.parse(value) as T;
     } catch (error) {
       console.error("Cache get error:", error);
       return null;
     }
   }
 
-  async set(
-    key: string,
-    value: string,
-    ttlSeconds: number = 300,
-  ): Promise<void> {
+  async set<T>(key: string, value: T, ttlSeconds: number = 300): Promise<void> {
     try {
       // setex is being used for ioredis and for redis  setEx is being used
-      await this.client.setex(key, ttlSeconds, value);
+      await this.client.setex(key, ttlSeconds, JSON.stringify(value));
     } catch (error) {
       console.error("Cache set error:", error);
     }
