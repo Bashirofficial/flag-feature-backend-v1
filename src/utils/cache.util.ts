@@ -15,7 +15,11 @@ export class CacheService {
 
   async get<T>(key: string): Promise<T | null> {
     try {
+      const start = performance.now();
       const value = await this.client.get(key);
+
+      console.log(`Redis GET: ${(performance.now() - start).toFixed(2)} ms`);
+
       if (!value) return null;
 
       return JSON.parse(value) as T;
