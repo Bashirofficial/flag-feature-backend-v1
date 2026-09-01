@@ -1,0 +1,20 @@
+version: "3.8"
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: feature_flags_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: redis_insight
+    ports:
+      - "5540:5540"
+    restart: always
+
+volumes:
+  redis_data:
