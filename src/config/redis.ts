@@ -4,7 +4,7 @@
 import Redis from "ioredis";
 
 const redisClient = new Redis(process.env.REDIS_URL as string, {
-  family: 0, // 0 = IPv4, 1 = IPv6 Added this to debug latency issue with Redis connection on Railway
+  connectTimeout: 10000,
   retryStrategy(times) {
     const delay = Math.min(times * 50, 2000);
     console.warn(`Redis connection lost. Retrying in ${delay}ms...`);
@@ -29,8 +29,42 @@ redisClient.on("ready", async () => {
   console.log(`⏱️ Baseline Socket Latency: ${(end - start).toFixed(2)}ms`);
 });
 
+redisClient.on("end", () => {
+  console.warn("Redis connection closed");
+});
+
+redisClient.on("close", () => {
+  console.warn("Redis socket closed");
+});
+
 export const connectRedis = async () => {
-  await redisClient.ping();
+  //await redisClient.ping();
+
+  if (redisClient.status === "ready") {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+
+    const onError = (err: Error) => {
+      cleanup();
+      reject(err);
+    };
+
+    const cleanup = () => {
+      redisClient.off("ready", onReady);
+      redisClient.off("error", onError);
+    };
+
+    redisClient.once("ready", onReady);
+    redisClient.once("error", onError);
+  });
+
+  console.log("✅ Redis connection established.");
 };
 
 export const closeRedis = async () => {
