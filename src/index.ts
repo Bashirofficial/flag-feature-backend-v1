@@ -4,13 +4,14 @@ dotenv.config();
 import app from "./app";
 import { connectDB, disconnectDB } from "./db";
 import { logger } from "./config/logger";
+import { connectRedis } from "./config/redis";
 
 const PORT = process.env.PORT;
 
 const startServer = async () => {
   try {
     await connectDB();
-
+    await connectRedis();
     const server = app.listen(PORT, () => {
       logger.info(
         { port: PORT, env: process.env.NODE_ENV },
